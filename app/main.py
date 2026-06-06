@@ -29,6 +29,8 @@ MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "100"))
 APP_USER = os.getenv("APP_USER", "")
 APP_PASSWORD = os.getenv("APP_PASSWORD", "")
 SECRET_KEY = os.getenv("SECRET_KEY", "")
+# Em producao (HTTPS) o cookie de sessao deve ser secure. Local (http) = false.
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -43,7 +45,11 @@ PROMPT = (
 )
 
 app = FastAPI(title="Transcritor")
-app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY or secrets.token_hex(16))
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SECRET_KEY or secrets.token_hex(16),
+    https_only=COOKIE_SECURE,
+)
 
 _client = genai.Client(api_key=API_KEY) if API_KEY else None
 _ffmpeg = shutil.which("ffmpeg")
