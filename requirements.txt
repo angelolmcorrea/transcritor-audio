@@ -3,3 +3,5 @@ uvicorn[standard]
 google-genai
 python-multipart
 python-dotenv
+itsdangerous
+

@@ -1,20 +1,23 @@
 """Transcritor — backend FastAPI.
 
 Recebe um arquivo de audio, envia para o Gemini via File API e devolve a
-transcricao em PT-BR. Ferramenta pessoal: sem login, sem banco, sem historico.
+transcricao em PT-BR. Ferramenta pessoal: sem banco, sem historico.
+Acesso protegido por login simples (sessao por cookie assinado).
 """
 
 import os
 import time
 import shutil
+import secrets
 import tempfile
 import subprocess
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Form
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 from google import genai
 
 load_dotenv()
@@ -22,6 +25,10 @@ load_dotenv()
 API_KEY = os.getenv("GEMINI_API_KEY")
 MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "100"))
+
+APP_USER = os.getenv("APP_USER", "")
+APP_PASSWORD = os.getenv("APP_PASSWORD", "")
+SECRET_KEY = os.getenv("SECRET_KEY", "")
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -36,9 +43,14 @@ PROMPT = (
 )
 
 app = FastAPI(title="Transcritor")
+app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY or secrets.token_hex(16))
 
 _client = genai.Client(api_key=API_KEY) if API_KEY else None
 _ffmpeg = shutil.which("ffmpeg")
+
+
+def _autenticado(request: Request) -> bool:
+    return bool(request.session.get("auth"))
 
 
 def _converter_para_flac(origem: str) -> str:
@@ -59,13 +71,46 @@ def _converter_para_flac(origem: str) -> str:
     return destino
 
 
+# ---------------------------------------------------------------- autenticacao
+
+@app.get("/login")
+def login_page():
+    return FileResponse(STATIC_DIR / "login.html")
+
+
+@app.post("/login")
+def login(request: Request, usuario: str = Form(...), senha: str = Form(...)):
+    ok = (
+        APP_USER
+        and APP_PASSWORD
+        and secrets.compare_digest(usuario, APP_USER)
+        and secrets.compare_digest(senha, APP_PASSWORD)
+    )
+    if not ok:
+        return RedirectResponse("/login?erro=1", status_code=303)
+    request.session["auth"] = True
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=303)
+
+
+# ------------------------------------------------------------------ aplicacao
+
 @app.get("/")
-def index():
+def index(request: Request):
+    if not _autenticado(request):
+        return RedirectResponse("/login", status_code=303)
     return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.post("/transcrever")
-async def transcrever(arquivo: UploadFile = File(...)):
+async def transcrever(request: Request, arquivo: UploadFile = File(...)):
+    if not _autenticado(request):
+        raise HTTPException(401, "Nao autenticado.")
     if _client is None:
         raise HTTPException(500, "GEMINI_API_KEY nao configurada. Veja o .env.")
 
