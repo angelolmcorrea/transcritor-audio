@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transcritor</title>
+  <style>
+    :root { --bg:#0f1115; --card:#181b22; --fg:#e7e9ee; --mut:#9aa1ad; --acc:#4f8cff; --line:#2a2f3a; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+           background:var(--bg); color:var(--fg); min-height:100vh; }
+    .wrap { max-width:760px; margin:0 auto; padding:32px 20px 64px; }
+    h1 { font-size:1.5rem; margin:0 0 4px; }
+    p.sub { color:var(--mut); margin:0 0 24px; font-size:.92rem; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; }
+    .drop { border:2px dashed var(--line); border-radius:10px; padding:28px; text-align:center;
+            cursor:pointer; transition:border-color .15s, background .15s; }
+    .drop:hover, .drop.over { border-color:var(--acc); background:rgba(79,140,255,.06); }
+    .drop input { display:none; }
+    .fname { color:var(--mut); font-size:.9rem; margin-top:10px; word-break:break-all; }
+    .row { display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
+    button { font:inherit; border:none; border-radius:8px; padding:10px 16px; cursor:pointer; }
+    .primary { background:var(--acc); color:#fff; }
+    .primary:disabled { opacity:.5; cursor:not-allowed; }
+    .ghost { background:transparent; color:var(--fg); border:1px solid var(--line); }
+    .ghost:disabled { opacity:.4; cursor:not-allowed; }
+    textarea { width:100%; min-height:280px; margin-top:20px; background:var(--bg); color:var(--fg);
+               border:1px solid var(--line); border-radius:10px; padding:14px; font:inherit;
+               line-height:1.5; resize:vertical; }
+    .status { margin-top:14px; font-size:.9rem; min-height:1.2em; }
+    .status.err { color:#ff6b6b; }
+    .status.ok { color:#5fd38a; }
+    .spin { display:inline-block; width:14px; height:14px; border:2px solid var(--mut);
+            border-top-color:var(--acc); border-radius:50%; animation:r .7s linear infinite;
+            vertical-align:-2px; margin-right:6px; }
+    @keyframes r { to { transform:rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Transcritor</h1>
+    <p class="sub">Envie um arquivo de áudio e receba a transcrição em português.</p>
+
+    <div class="card">
+      <label class="drop" id="drop">
+        <input type="file" id="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac,.aac,.aiff">
+        <div><strong>Clique ou arraste</strong> um arquivo de áudio aqui</div>
+        <div class="fname" id="fname">Nenhum arquivo selecionado</div>
+      </label>
+
+      <div class="row">
+        <button class="primary" id="go" disabled>Transcrever</button>
+        <button class="ghost" id="copy" disabled>Copiar</button>
+        <button class="ghost" id="dl" disabled>Baixar .txt</button>
+      </div>
+
+      <div class="status" id="status"></div>
+      <textarea id="out" placeholder="A transcrição aparece aqui (editável)."></textarea>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const file = $("file"), drop = $("drop"), fname = $("fname");
+    const go = $("go"), copy = $("copy"), dl = $("dl");
+    const out = $("out"), status = $("status");
+
+    function setStatus(msg, cls = "") { status.className = "status " + cls; status.innerHTML = msg; }
+    function refreshActions() {
+      const has = out.value.trim().length > 0;
+      copy.disabled = !has; dl.disabled = !has;
+    }
+
+    file.addEventListener("change", () => {
+      const f = file.files[0];
+      fname.textContent = f ? f.name : "Nenhum arquivo selecionado";
+      go.disabled = !f;
+      setStatus("");
+    });
+
+    ["dragover", "dragenter"].forEach(e =>
+      drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add("over"); }));
+    ["dragleave", "drop"].forEach(e =>
+      drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove("over"); }));
+    drop.addEventListener("drop", ev => {
+      if (ev.dataTransfer.files.length) { file.files = ev.dataTransfer.files; file.dispatchEvent(new Event("change")); }
+    });
+
+    go.addEventListener("click", async () => {
+      const f = file.files[0];
+      if (!f) return;
+      go.disabled = true;
+      setStatus('<span class="spin"></span>Enviando e transcrevendo… (pode levar um tempo em áudios longos)');
+      const fd = new FormData();
+      fd.append("arquivo", f);
+      try {
+        const r = await fetch("/transcrever", { method: "POST", body: fd });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.detail || "Falha na transcrição.");
+        out.value = data.texto;
+        setStatus("Transcrição concluída.", "ok");
+      } catch (err) {
+        setStatus(err.message, "err");
+      } finally {
+        go.disabled = false;
+        refreshActions();
+      }
+    });
+
+    out.addEventListener("input", refreshActions);
+
+    copy.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(out.value);
+      setStatus("Copiado.", "ok");
+    });
+
+    dl.addEventListener("click", () => {
+      const blob = new Blob([out.value], { type: "text/plain;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      const base = (file.files[0]?.name || "transcricao").replace(/\.[^.]+$/, "");
+      a.download = base + ".txt";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+  </script>
+</body>
+</html>
