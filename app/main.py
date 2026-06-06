@@ -6,7 +6,9 @@ transcricao em PT-BR. Ferramenta pessoal: sem login, sem banco, sem historico.
 
 import os
 import time
+import shutil
 import tempfile
+import subprocess
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -19,18 +21,13 @@ load_dotenv()
 
 API_KEY = os.getenv("GEMINI_API_KEY")
 MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "100"))
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-# Formatos que o Gemini aceita nativamente.
-FORMATOS_OK = {
-    "audio/wav", "audio/x-wav",
-    "audio/mpeg", "audio/mp3",
-    "audio/aiff", "audio/x-aiff",
-    "audio/aac",
-    "audio/ogg",
-    "audio/flac", "audio/x-flac",
-}
+# Extensoes que o Gemini aceita nativamente. Outras (ex: .m4a, .opus, .wma)
+# sao convertidas para .flac via ffmpeg antes do upload.
+EXT_NATIVAS = {".wav", ".mp3", ".aiff", ".aif", ".aac", ".ogg", ".flac"}
 
 PROMPT = (
     "Transcreva integralmente o audio a seguir em portugues do Brasil. "
@@ -41,6 +38,25 @@ PROMPT = (
 app = FastAPI(title="Transcritor")
 
 _client = genai.Client(api_key=API_KEY) if API_KEY else None
+_ffmpeg = shutil.which("ffmpeg")
+
+
+def _converter_para_flac(origem: str) -> str:
+    """Converte um audio nao-nativo para .flac usando ffmpeg. Devolve o novo path."""
+    if not _ffmpeg:
+        raise HTTPException(
+            415,
+            "Formato nao suportado nativamente pelo Gemini e ffmpeg nao encontrado "
+            "para conversao. Converta o audio para mp3/wav/flac e tente de novo.",
+        )
+    destino = origem + ".flac"
+    proc = subprocess.run(
+        [_ffmpeg, "-y", "-i", origem, "-vn", "-c:a", "flac", destino],
+        capture_output=True,
+    )
+    if proc.returncode != 0 or not os.path.exists(destino):
+        raise HTTPException(422, "Falha ao converter o audio (ffmpeg).")
+    return destino
 
 
 @app.get("/")
@@ -57,16 +73,30 @@ async def transcrever(arquivo: UploadFile = File(...)):
     if not conteudo:
         raise HTTPException(400, "Arquivo vazio.")
 
-    sufixo = Path(arquivo.filename or "audio").suffix or ".bin"
+    tamanho_mb = len(conteudo) / (1024 * 1024)
+    if tamanho_mb > MAX_UPLOAD_MB:
+        raise HTTPException(
+            413,
+            f"Arquivo de {tamanho_mb:.1f} MB excede o limite de {MAX_UPLOAD_MB} MB.",
+        )
+
+    ext = Path(arquivo.filename or "audio").suffix.lower() or ".bin"
     tmp_path = None
+    convertido = None
     enviado = None
     try:
         # Grava num temp porque a File API sobe a partir de um caminho.
-        with tempfile.NamedTemporaryFile(delete=False, suffix=sufixo) as tmp:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
             tmp.write(conteudo)
             tmp_path = tmp.name
 
-        enviado = _client.files.upload(file=tmp_path)
+        # Formato fora da lista nativa do Gemini -> converte pra flac.
+        caminho_envio = tmp_path
+        if ext not in EXT_NATIVAS:
+            convertido = _converter_para_flac(tmp_path)
+            caminho_envio = convertido
+
+        enviado = _client.files.upload(file=caminho_envio)
 
         # File API processa de forma assincrona; espera ficar ACTIVE.
         esperas = 0
@@ -91,17 +121,18 @@ async def transcrever(arquivo: UploadFile = File(...)):
         return JSONResponse({"texto": texto})
 
     finally:
-        # Limpa o arquivo remoto e o temp local.
+        # Limpa o arquivo remoto e os temps locais.
         if enviado is not None:
             try:
                 _client.files.delete(name=enviado.name)
             except Exception:
                 pass
-        if tmp_path and os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
+        for p in (tmp_path, convertido):
+            if p and os.path.exists(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
 
 
 # Serve os assets estaticos (CSS/JS) caso sejam adicionados depois.

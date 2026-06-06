@@ -36,7 +36,9 @@ Acesse http://127.0.0.1:8000
 
 - A `GEMINI_API_KEY` fica só no `.env` (ignorado pelo Git). Nunca vai pro browser.
 - Modelo padrão: `gemini-2.5-flash`. Sobrescreva com `GEMINI_MODEL` no `.env`.
-- Formatos aceitos pelo Gemini: wav, mp3, aiff, aac, ogg, flac. Outros (ex: m4a)
-  podem exigir conversão.
+- Formatos aceitos nativamente pelo Gemini: wav, mp3, aiff, aac, ogg, flac.
+  Outros (ex: `.m4a`, `.opus`, `.wma`) são convertidos para flac via **ffmpeg**
+  automaticamente (precisa do ffmpeg no PATH).
+- Teto de upload: `MAX_UPLOAD_MB` no `.env` (default 100 MB).
 - **Privacidade:** no free tier do AI Studio o Google pode usar os dados para
   melhorar os produtos dele. Evite áudio sensível.
