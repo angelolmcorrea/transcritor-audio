@@ -52,7 +52,9 @@ app.add_middleware(
 )
 
 _client = genai.Client(api_key=API_KEY) if API_KEY else None
-_ffmpeg = shutil.which("ffmpeg")
+# FFMPEG_PATH permite apontar o binario direto (util quando rodando como
+# servico, que pode nao herdar o PATH). Fallback: procura no PATH.
+_ffmpeg = os.getenv("FFMPEG_PATH") or shutil.which("ffmpeg")
 
 
 def _autenticado(request: Request) -> bool:
