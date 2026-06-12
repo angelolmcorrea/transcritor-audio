@@ -24,18 +24,34 @@ def montar_config(handle: str | None):
     return cfg
 
 
-async def transcrever_ao_vivo(client, ler_pcm, on_texto, on_status, parar):
+async def transcrever_ao_vivo(client, ler_pcm, on_texto, on_status, on_erro, parar):
     """
     client: genai.Client.
-    ler_pcm: async callable -> bytes (proximo bloco) ou None (fim da captura).
+    ler_pcm: async callable -> bytes (proximo bloco), b"" (nada ainda) ou None (fim).
     on_texto: async callable(str) chamado a cada trecho transcrito.
     on_status: async callable(str) — 'capturando' | 'reconectando'.
+    on_erro: async callable(str) — chamado quando a sessao falha em definitivo.
     parar: asyncio.Event que encerra tudo.
     """
     handle = None
+    falhas = 0
     while not parar.is_set():
         await on_status("capturando")
-        handle = await _uma_sessao(client, ler_pcm, on_texto, parar, handle)
+        try:
+            handle = await _uma_sessao(client, ler_pcm, on_texto, parar, handle)
+            falhas = 0
+        except Exception as e:
+            falhas += 1
+            if falhas > 5:
+                await on_erro(f"Conexao ao vivo falhou repetidamente: {e}")
+                parar.set()
+                break
+            await on_status("reconectando")
+            for _ in range(min(2 ** falhas, 30)):  # backoff respeitando parar
+                if parar.is_set():
+                    break
+                await asyncio.sleep(1)
+            continue
         if parar.is_set():
             break
         await on_status("reconectando")
@@ -54,6 +70,8 @@ async def _uma_sessao(client, ler_pcm, on_texto, parar, handle):
                 if pcm is None:
                     parar.set()
                     return
+                if not pcm:        # b"" = timeout, nada ainda; nao encerra a sessao
+                    continue
                 await session.send_realtime_input(
                     audio=types.Blob(data=pcm, mime_type="audio/pcm;rate=16000"))
 

@@ -164,13 +164,21 @@ async def ws_ao_vivo(websocket: WebSocket):
     tarefa: asyncio.Task | None = None
 
     async def ler_pcm():
-        return await asyncio.to_thread(captura.proximo_bloco, 2.0)
+        try:
+            return await asyncio.to_thread(captura.proximo_bloco, 2.0)
+        except Exception as e:
+            await websocket.send_json({"tipo": "erro", "msg": f"Captura falhou: {e}"})
+            parar.set()
+            return None
 
     async def on_texto(t):
         await websocket.send_json({"tipo": "texto", "texto": t})
 
     async def on_status(s):
         await websocket.send_json({"tipo": "status", "status": s})
+
+    async def on_erro(m):
+        await websocket.send_json({"tipo": "erro", "msg": m})
 
     try:
         while True:
@@ -182,8 +190,12 @@ async def ws_ao_vivo(websocket: WebSocket):
                 continue
 
             if cmd["acao"] == "iniciar":
-                if tarefa is not None:
+                if tarefa is not None and not tarefa.done():
                     continue  # ja rodando
+                # limpa restos de uma sessao anterior que terminou
+                if captura is not None:
+                    captura.parar()
+                    captura = None
                 try:
                     captura = AudioCapture(cmd["fonte"])
                     captura.iniciar()
@@ -195,7 +207,8 @@ async def ws_ao_vivo(websocket: WebSocket):
                 parar.clear()
                 tarefa = asyncio.create_task(
                     live_transcribe.transcrever_ao_vivo(
-                        _client, ler_pcm, on_texto, on_status, parar))
+                        _client, ler_pcm, on_texto, on_status, on_erro, parar))
+                tarefa.add_done_callback(lambda t: t.cancelled() or t.exception())
 
             elif cmd["acao"] == "parar":
                 parar.set()

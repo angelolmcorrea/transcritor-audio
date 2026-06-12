@@ -30,3 +30,9 @@ def test_mix_alinha_pelo_menor():
     b = np.array([0.1, 0.1], dtype="float32")
     out = mix(a, b)
     assert len(out) == 2
+
+
+def test_proximo_bloco_timeout_retorna_vazio():
+    from app.audio_capture import AudioCapture
+    cap = AudioCapture("mic")  # sem iniciar(): a fila fica vazia
+    assert cap.proximo_bloco(timeout=0.05) == b""

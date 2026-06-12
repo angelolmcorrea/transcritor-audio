@@ -27,8 +27,11 @@ async def main():
     async def on_status(s):
         print(f"\n[{s}]", flush=True)
 
+    async def on_erro(m):
+        print(f"\n[ERRO] {m}", flush=True)
+
     tarefa = asyncio.create_task(
-        live_transcribe.transcrever_ao_vivo(client, ler_pcm, on_texto, on_status, parar))
+        live_transcribe.transcrever_ao_vivo(client, ler_pcm, on_texto, on_status, on_erro, parar))
     await asyncio.sleep(20)
     parar.set()
     cap.parar()

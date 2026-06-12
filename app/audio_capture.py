@@ -78,9 +78,12 @@ class AudioCapture:
         self._thread.start()
 
     def proximo_bloco(self, timeout: float = 1.0):
-        """Bloqueia ate o proximo bloco PCM (bytes) ou None (fim). Levanta o
-        erro de captura, se houver, ao chegar no fim."""
-        item = self._fila.get(timeout=timeout)
+        """Proximo bloco PCM (bytes). b"" = nada ainda (timeout); None = fim da
+        captura. Levanta o erro de captura, se houver, ao chegar no fim."""
+        try:
+            item = self._fila.get(timeout=timeout)
+        except queue.Empty:
+            return b""
         if item is None and self._erro is not None:
             raise self._erro
         return item
