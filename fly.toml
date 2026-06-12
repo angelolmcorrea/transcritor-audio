@@ -1,0 +1,27 @@
+# Configuracao de deploy no Fly.io.
+# Ferramenta pessoal de uso esporadico: escala a ZERO quando ociosa
+# (auto_stop = "stop", min_machines_running = 0) pra nao gastar a toa.
+# A primeira request depois de ociosa acorda a maquina (alguns segundos).
+# Segredos (GEMINI_API_KEY, APP_USER, APP_PASSWORD, SECRET_KEY) NAO ficam aqui —
+# vao via `fly secrets set`. Aqui so config nao-sensivel.
+
+app = "transcritor-audio"
+primary_region = "gru"  # Sao Paulo
+
+[build]
+
+[env]
+  GEMINI_MODEL = "gemini-2.5-flash"
+  MAX_UPLOAD_MB = "100"
+  COOKIE_SECURE = "true"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
