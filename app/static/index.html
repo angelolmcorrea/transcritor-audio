@@ -67,6 +67,20 @@
                border:1px solid var(--line); border-radius:12px; padding:14px; font:inherit;
                font-size:.9rem; line-height:1.55; resize:vertical; }
     textarea:focus { outline:none; border-color:var(--teal); }
+    .tabs { display:flex; gap:6px; margin-bottom:18px; }
+    .tab { flex:1; text-align:center; font-size:.85rem; font-weight:600;
+           padding:9px 12px; border-radius:10px; border:1px solid #d6dedd;
+           background:#fff; color:var(--mut); cursor:pointer; }
+    .tab.ativa { background:var(--teal); color:#fff; border-color:var(--teal); }
+    .modo { display:none; }
+    .modo.ativo { display:block; }
+    .fontes { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+    .fonte-op { flex:1; min-width:90px; text-align:center; font-size:.8rem;
+                padding:9px; border-radius:10px; border:1px solid #d6dedd;
+                background:#fff; color:var(--fg); cursor:pointer; }
+    .fonte-op.sel { border-color:var(--teal); background:#eef6f6; color:var(--teal); font-weight:600; }
+    .ao-vivo-rec { display:inline-block; width:9px; height:9px; border-radius:50%;
+                   background:var(--coral); margin-right:6px; vertical-align:1px; }
   </style>
 </head>
 <body>
@@ -86,20 +100,44 @@
       <h1>Transcritor de áudio</h1>
       <p class="sub">Olá! Envie um ou mais áudios e receba o texto em português.</p>
 
-      <label class="drop" id="drop">
-        <input type="file" id="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac,.aac,.aiff" multiple>
-        <div class="ic">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#0F6E78" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>
-          </svg>
-        </div>
-        <div class="big">Arraste um ou vários áudios</div>
-        <div class="small">ou clique para escolher</div>
-        <div class="chips" id="fname"></div>
-      </label>
+      <div class="tabs">
+        <button class="tab ativa" id="tab-arquivo" type="button">Arquivo</button>
+        <button class="tab" id="tab-aovivo" type="button">Ao vivo</button>
+      </div>
 
-      <div class="row">
-        <button class="primary" id="go" disabled>Transcrever</button>
+      <!-- MODO ARQUIVO (fluxo existente) -->
+      <div class="modo ativo" id="modo-arquivo">
+        <label class="drop" id="drop">
+          <input type="file" id="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac,.aac,.aiff" multiple>
+          <div class="ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#0F6E78" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>
+            </svg>
+          </div>
+          <div class="big">Arraste um ou vários áudios</div>
+          <div class="small">ou clique para escolher</div>
+          <div class="chips" id="fname"></div>
+        </label>
+        <div class="row">
+          <button class="primary" id="go" disabled>Transcrever</button>
+        </div>
+      </div>
+
+      <!-- MODO AO VIVO -->
+      <div class="modo" id="modo-aovivo">
+        <div class="fontes">
+          <button class="fonte-op sel" data-fonte="ambos" type="button">Mic + PC</button>
+          <button class="fonte-op" data-fonte="mic" type="button">Microfone</button>
+          <button class="fonte-op" data-fonte="pc" type="button">Áudio do PC</button>
+        </div>
+        <div class="row">
+          <button class="primary" id="iniciar" type="button">Iniciar</button>
+          <button class="ghost" id="parar" type="button" disabled>Parar</button>
+        </div>
+      </div>
+
+      <!-- Compartilhado pelos dois modos -->
+      <div class="row" style="margin-top:12px;">
         <button class="ghost" id="copy" disabled>Copiar</button>
         <button class="ghost" id="dl" disabled>Baixar .txt</button>
       </div>
@@ -206,6 +244,64 @@
     });
 
     out.addEventListener("input", refreshActions);
+
+    // ----- Abas -----
+    const tabArquivo = $("tab-arquivo"), tabAovivo = $("tab-aovivo");
+    const modoArquivo = $("modo-arquivo"), modoAovivo = $("modo-aovivo");
+    function trocarAba(aovivo) {
+      tabAovivo.classList.toggle("ativa", aovivo);
+      tabArquivo.classList.toggle("ativa", !aovivo);
+      modoAovivo.classList.toggle("ativo", aovivo);
+      modoArquivo.classList.toggle("ativo", !aovivo);
+    }
+    tabArquivo.addEventListener("click", () => trocarAba(false));
+    tabAovivo.addEventListener("click", () => trocarAba(true));
+
+    // ----- Seletor de fonte -----
+    let fonteSel = "ambos";
+    document.querySelectorAll(".fonte-op").forEach(op => {
+      op.addEventListener("click", () => {
+        document.querySelectorAll(".fonte-op").forEach(o => o.classList.remove("sel"));
+        op.classList.add("sel");
+        fonteSel = op.dataset.fonte;
+      });
+    });
+
+    // ----- WebSocket ao vivo -----
+    const iniciar = $("iniciar"), parar = $("parar");
+    let ws = null;
+    iniciar.addEventListener("click", () => {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      ws = new WebSocket(`${proto}://${location.host}/ws/ao-vivo`);
+      iniciar.disabled = true;
+      out.value = "";
+      refreshActions();
+      ws.onopen = () => ws.send(JSON.stringify({ acao: "iniciar", fonte: fonteSel }));
+      ws.onmessage = (ev) => {
+        const m = JSON.parse(ev.data);
+        if (m.tipo === "texto") { out.value += m.texto; refreshActions(); }
+        else if (m.tipo === "status") {
+          if (m.status === "capturando") {
+            setStatus('<span class="ao-vivo-rec"></span> Capturando ao vivo…');
+            parar.disabled = false;
+          } else if (m.status === "reconectando") {
+            setStatus('<span class="spin"></span> Reconectando…');
+          } else if (m.status === "parado") {
+            setStatus("Captura encerrada.", "ok");
+          }
+        } else if (m.tipo === "erro") {
+          setStatus(m.msg, "err");
+          iniciar.disabled = false; parar.disabled = true;
+        }
+      };
+      ws.onclose = () => { iniciar.disabled = false; parar.disabled = true; };
+      ws.onerror = () => setStatus("Falha na conexão ao vivo.", "err");
+    });
+    parar.addEventListener("click", () => {
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ acao: "parar" }));
+      parar.disabled = true;
+      iniciar.disabled = false;
+    });
 
     copy.addEventListener("click", async () => {
       await navigator.clipboard.writeText(out.value);
