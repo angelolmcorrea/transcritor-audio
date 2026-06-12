@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from google import genai
+from google.genai import errors as genai_errors
 
 load_dotenv()
 
@@ -43,6 +44,33 @@ PROMPT = (
     "Use pontuacao e paragrafos naturais. Nao resuma, nao comente, nao adicione "
     "rotulos de falante — devolva apenas o texto transcrito."
 )
+
+# Codigos do Gemini que valem retry: sobrecarga/indisponibilidade transitoria
+# (comum no free tier) e rate limit. Espera crescente entre tentativas.
+CODIGOS_TRANSITORIOS = {429, 500, 503}
+
+
+def _com_retry(fn, tentativas=4, espera_inicial=2):
+    """Executa fn(); em erro transitorio do Gemini, retenta com backoff."""
+    espera = espera_inicial
+    for i in range(tentativas):
+        try:
+            return fn()
+        except genai_errors.APIError as e:
+            if e.code in CODIGOS_TRANSITORIOS and i < tentativas - 1:
+                time.sleep(espera)
+                espera *= 2
+                continue
+            raise
+
+
+def _mensagem_erro_gemini(e: genai_errors.APIError) -> str:
+    if e.code == 503:
+        return "O Gemini esta sobrecarregado no momento. Tente novamente em alguns instantes."
+    if e.code == 429:
+        return "Limite de uso do Gemini atingido (free tier). Aguarde um pouco e tente de novo."
+    return f"Erro do Gemini ({e.code}). Tente novamente em instantes."
+
 
 app = FastAPI(title="Transcritor")
 app.add_middleware(
@@ -149,7 +177,7 @@ async def transcrever(request: Request, arquivo: UploadFile = File(...)):
             convertido = _converter_para_flac(tmp_path)
             caminho_envio = convertido
 
-        enviado = _client.files.upload(file=caminho_envio)
+        enviado = _com_retry(lambda: _client.files.upload(file=caminho_envio))
 
         # File API processa de forma assincrona; espera ficar ACTIVE.
         esperas = 0
@@ -163,15 +191,22 @@ async def transcrever(request: Request, arquivo: UploadFile = File(...)):
         if enviado.state.name == "FAILED":
             raise HTTPException(502, "O Gemini falhou ao processar o audio.")
 
-        resposta = _client.models.generate_content(
-            model=MODEL,
-            contents=[enviado, PROMPT],
+        resposta = _com_retry(
+            lambda: _client.models.generate_content(
+                model=MODEL,
+                contents=[enviado, PROMPT],
+            )
         )
         texto = (resposta.text or "").strip()
         if not texto:
             raise HTTPException(502, "Transcricao vazia retornada pelo modelo.")
 
         return JSONResponse({"texto": texto})
+
+    except genai_errors.APIError as e:
+        # Erro do Gemini que sobreviveu ao retry: devolve JSON legivel
+        # em vez de vazar um 500 em texto puro pro frontend.
+        raise HTTPException(502, _mensagem_erro_gemini(e))
 
     finally:
         # Limpa o arquivo remoto e os temps locais.

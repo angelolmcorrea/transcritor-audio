@@ -42,12 +42,12 @@
       <h1>Transcritor</h1>
       <a href="/logout" style="color:#9aa1ad;font-size:.85rem;text-decoration:none;">Sair</a>
     </div>
-    <p class="sub">Envie um arquivo de áudio e receba a transcrição em português.</p>
+    <p class="sub">Envie um ou mais arquivos de áudio e receba a transcrição em português.</p>
 
     <div class="card">
       <label class="drop" id="drop">
-        <input type="file" id="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac,.aac,.aiff">
-        <div><strong>Clique ou arraste</strong> um arquivo de áudio aqui</div>
+        <input type="file" id="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac,.aac,.aiff" multiple>
+        <div><strong>Clique ou arraste</strong> um ou mais arquivos de áudio aqui</div>
         <div class="fname" id="fname">Nenhum arquivo selecionado</div>
       </label>
 
@@ -74,10 +74,19 @@
       copy.disabled = !has; dl.disabled = !has;
     }
 
+    function descreverSelecao(fs) {
+      if (!fs.length) return "Nenhum arquivo selecionado";
+      if (fs.length === 1) return fs[0].name;
+      return fs.length + " arquivos: " + Array.from(fs).map(f => f.name).join(", ");
+    }
+
     file.addEventListener("change", () => {
-      const f = file.files[0];
-      fname.textContent = f ? f.name : "Nenhum arquivo selecionado";
-      go.disabled = !f;
+      const fs = file.files;
+      fname.textContent = descreverSelecao(fs);
+      go.disabled = !fs.length;
+      // Novo(s) áudio(s) inserido(s): limpa a transcrição anterior.
+      out.value = "";
+      refreshActions();
       setStatus("");
     });
 
@@ -89,25 +98,59 @@
       if (ev.dataTransfer.files.length) { file.files = ev.dataTransfer.files; file.dispatchEvent(new Event("change")); }
     });
 
-    go.addEventListener("click", async () => {
-      const f = file.files[0];
-      if (!f) return;
-      go.disabled = true;
-      setStatus('<span class="spin"></span>Enviando e transcrevendo… (pode levar um tempo em áudios longos)');
+    async function transcreverUm(f) {
       const fd = new FormData();
       fd.append("arquivo", f);
-      try {
-        const r = await fetch("/transcrever", { method: "POST", body: fd });
-        const data = await r.json();
-        if (!r.ok) throw new Error(data.detail || "Falha na transcrição.");
-        out.value = data.texto;
-        setStatus("Transcrição concluída.", "ok");
-      } catch (err) {
-        setStatus(err.message, "err");
-      } finally {
-        go.disabled = false;
+      const r = await fetch("/transcrever", { method: "POST", body: fd });
+      // A resposta pode não ser JSON (ex.: erro 500 cru "Internal Server Error").
+      // Lê como texto e tenta parsear; se não der, usa o texto na mensagem.
+      const raw = await r.text();
+      let data = null;
+      try { data = JSON.parse(raw); } catch { /* não é JSON */ }
+      if (!r.ok) {
+        throw new Error((data && data.detail) || raw.trim() || `Falha na transcrição (HTTP ${r.status}).`);
+      }
+      return data ? data.texto : raw;
+    }
+
+    go.addEventListener("click", async () => {
+      const fs = Array.from(file.files);
+      if (!fs.length) return;
+      go.disabled = true;
+      copy.disabled = dl.disabled = true;
+      out.value = "";
+
+      const blocos = [];
+      let erros = 0;
+      for (let i = 0; i < fs.length; i++) {
+        const f = fs[i];
+        const total = fs.length > 1 ? ` (${i + 1}/${fs.length})` : "";
+        setStatus(`<span class="spin"></span>Transcrevendo ${f.name}${total}… (pode levar um tempo em áudios longos)`);
+        try {
+          const texto = await transcreverUm(f);
+          blocos.push(`=== ${f.name} ===\n${texto}`);
+        } catch (err) {
+          erros++;
+          blocos.push(`=== ${f.name} ===\n[ERRO: ${err.message}]`);
+        }
+        // Atualiza o textarea a cada arquivo concluído, pra acompanhar o progresso.
+        out.value = blocos.join("\n\n");
         refreshActions();
       }
+
+      if (fs.length === 1) {
+        setStatus(erros ? "Falha na transcrição." : "Transcrição concluída.", erros ? "err" : "ok");
+      } else {
+        const ok = fs.length - erros;
+        setStatus(
+          erros
+            ? `Concluído: ${ok} de ${fs.length} transcritos, ${erros} com erro.`
+            : `Concluído: ${fs.length} arquivos transcritos.`,
+          erros ? "err" : "ok"
+        );
+      }
+      go.disabled = false;
+      refreshActions();
     });
 
     out.addEventListener("input", refreshActions);
@@ -121,7 +164,9 @@
       const blob = new Blob([out.value], { type: "text/plain;charset=utf-8" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      const base = (file.files[0]?.name || "transcricao").replace(/\.[^.]+$/, "");
+      const base = file.files.length === 1
+        ? (file.files[0].name || "transcricao").replace(/\.[^.]+$/, "")
+        : "transcricao";
       a.download = base + ".txt";
       a.click();
       URL.revokeObjectURL(a.href);
