@@ -3,6 +3,7 @@ transcricao por ~20s. Uso: ./.venv/Scripts/python.exe scripts/smoke_live.py [pc|
 import asyncio
 import os
 import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 load_dotenv()
 from google import genai

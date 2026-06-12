@@ -1,8 +1,10 @@
 """Fumaca manual: grava ~3s de cada fonte e reporta nivel medio.
 Rode com algo tocando no PC e falando no mic.
 Uso: ./.venv/Scripts/python.exe scripts/smoke_captura.py [pc|mic|ambos]"""
+import os
 import sys
 import time
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 from app.audio_capture import AudioCapture
 
