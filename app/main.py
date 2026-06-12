@@ -7,6 +7,7 @@ Acesso protegido por login simples (sessao por cookie assinado).
 
 import os
 import time
+import asyncio
 import shutil
 import secrets
 import tempfile
@@ -14,12 +15,16 @@ import subprocess
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Form, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from google import genai
 from google.genai import errors as genai_errors
+
+from .audio_capture import AudioCapture
+from .protocolo import parse_comando
+from . import live_transcribe
 
 load_dotenv()
 
@@ -140,6 +145,94 @@ def logout(request: Request):
 def healthz():
     """Health check sem autenticacao (usado pelo host, ex.: Render)."""
     return {"ok": True}
+
+
+@app.websocket("/ws/ao-vivo")
+async def ws_ao_vivo(websocket: WebSocket):
+    await websocket.accept()
+    if not websocket.session.get("auth"):
+        await websocket.send_json({"tipo": "erro", "msg": "Nao autenticado."})
+        await websocket.close(code=1008)
+        return
+    if _client is None:
+        await websocket.send_json({"tipo": "erro", "msg": "GEMINI_API_KEY nao configurada."})
+        await websocket.close()
+        return
+
+    captura: AudioCapture | None = None
+    parar = asyncio.Event()
+    tarefa: asyncio.Task | None = None
+
+    async def ler_pcm():
+        try:
+            return await asyncio.to_thread(captura.proximo_bloco, 2.0)
+        except Exception as e:
+            await websocket.send_json({"tipo": "erro", "msg": f"Captura falhou: {e}"})
+            parar.set()
+            return None
+
+    async def on_texto(t):
+        await websocket.send_json({"tipo": "texto", "texto": t})
+
+    async def on_status(s):
+        await websocket.send_json({"tipo": "status", "status": s})
+
+    async def on_erro(m):
+        await websocket.send_json({"tipo": "erro", "msg": m})
+
+    try:
+        while True:
+            raw = await websocket.receive_json()
+            try:
+                cmd = parse_comando(raw)
+            except ValueError as e:
+                await websocket.send_json({"tipo": "erro", "msg": str(e)})
+                continue
+
+            if cmd["acao"] == "iniciar":
+                if tarefa is not None and not tarefa.done():
+                    continue  # ja rodando
+                # limpa restos de uma sessao anterior que terminou
+                if captura is not None:
+                    captura.parar()
+                    captura = None
+                try:
+                    captura = AudioCapture(cmd["fonte"])
+                    captura.iniciar()
+                except Exception as e:
+                    await websocket.send_json(
+                        {"tipo": "erro", "msg": f"Falha ao iniciar captura: {e}"})
+                    captura = None
+                    continue
+                parar.clear()
+                tarefa = asyncio.create_task(
+                    live_transcribe.transcrever_ao_vivo(
+                        _client, ler_pcm, on_texto, on_status, on_erro, parar))
+                tarefa.add_done_callback(lambda t: t.cancelled() or t.exception())
+
+            elif cmd["acao"] == "parar":
+                parar.set()
+                if captura:
+                    captura.parar()
+                    captura = None
+                if tarefa:
+                    try:
+                        await tarefa
+                    except Exception as e:
+                        await websocket.send_json({"tipo": "erro", "msg": str(e)})
+                    tarefa = None
+                await websocket.send_json({"tipo": "status", "status": "parado"})
+    except WebSocketDisconnect:
+        pass
+    finally:
+        parar.set()
+        if captura:
+            captura.parar()
+        if tarefa:
+            try:
+                await tarefa
+            except Exception:
+                pass
 
 
 @app.get("/")
