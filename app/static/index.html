@@ -3,52 +3,99 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Transcritor</title>
+  <title>Transcritor — Corrêa Info</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+  <link rel="apple-touch-icon" href="/static/favicon-180.png">
   <style>
-    :root { --bg:#0f1115; --card:#181b22; --fg:#e7e9ee; --mut:#9aa1ad; --acc:#4f8cff; --line:#2a2f3a; }
+    :root {
+      --bg:#eaf0ef; --surface:#ffffff; --fg:#10211F; --mut:#5b6b6b;
+      --teal:#0F6E78; --coral:#FF6F59; --line:#e6ebea;
+      --drop-line:#cfe0e0; --drop-bg:#f7fbfb;
+      --ok:#1f7a4d; --err:#c0392b;
+    }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-           background:var(--bg); color:var(--fg); min-height:100vh; }
-    .wrap { max-width:760px; margin:0 auto; padding:32px 20px 64px; }
-    h1 { font-size:1.5rem; margin:0 0 4px; }
-    p.sub { color:var(--mut); margin:0 0 24px; font-size:.92rem; }
-    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; }
-    .drop { border:2px dashed var(--line); border-radius:10px; padding:28px; text-align:center;
-            cursor:pointer; transition:border-color .15s, background .15s; }
-    .drop:hover, .drop.over { border-color:var(--acc); background:rgba(79,140,255,.06); }
+    body { margin:0; min-height:100vh; background:var(--bg); color:var(--fg);
+           font-family:Inter, "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+           display:flex; justify-content:center; align-items:flex-start; padding:32px 16px 64px; }
+    .card { width:100%; max-width:560px; background:var(--surface); border:1px solid var(--line);
+            border-radius:16px; overflow:hidden; box-shadow:0 10px 30px rgba(16,33,31,.08); }
+
+    .bar { background:var(--teal); padding:13px 20px; display:flex; align-items:center; gap:10px; }
+    .bar .badge { width:30px; height:30px; border-radius:8px; background:#fff;
+                  display:flex; align-items:center; justify-content:center; }
+    .bar .badge svg { width:20px; height:20px; }
+    .bar .wm { color:#fff; font-weight:600; font-size:15px; letter-spacing:.2px; }
+    .bar .sair { margin-left:auto; color:rgba(255,255,255,.82); font-size:12.5px; text-decoration:none; }
+    .bar .sair:hover { color:#fff; }
+
+    .body { padding:24px 22px 26px; }
+    h1 { font-size:1.15rem; font-weight:600; margin:0 0 3px; }
+    p.sub { color:var(--mut); margin:0 0 18px; font-size:.84rem; }
+
+    .drop { display:block; border:2px dashed var(--drop-line); background:var(--drop-bg); border-radius:16px;
+            padding:30px 16px; text-align:center; cursor:pointer; transition:border-color .15s, background .15s; }
+    .drop:hover, .drop.over { border-color:var(--teal); background:#eef6f6; }
     .drop input { display:none; }
-    .fname { color:var(--mut); font-size:.9rem; margin-top:10px; word-break:break-all; }
-    .row { display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
-    button { font:inherit; border:none; border-radius:8px; padding:10px 16px; cursor:pointer; }
-    .primary { background:var(--acc); color:#fff; }
+    .drop .ic { width:50px; height:50px; border-radius:13px; background:#eaf3f3;
+                display:inline-flex; align-items:center; justify-content:center; margin-bottom:10px; }
+    .drop .ic svg { width:24px; height:24px; }
+    .drop .big { color:var(--fg); font-weight:600; font-size:14px; }
+    .drop .small { color:#7b8988; font-size:12px; margin-top:3px; }
+
+    .chips { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; margin-top:14px; }
+    .chips:empty { display:none; }
+    .chip { background:#eef4f3; border:1px solid #d9e4e3; color:#27403f; font-size:11px;
+            padding:4px 10px; border-radius:999px; word-break:break-all; }
+
+    .row { display:flex; gap:9px; margin-top:18px; flex-wrap:wrap; }
+    button { font:inherit; font-size:.84rem; font-weight:600; border:none; border-radius:10px;
+             padding:10px 17px; cursor:pointer; }
+    .primary { background:var(--coral); color:#fff; }
     .primary:disabled { opacity:.5; cursor:not-allowed; }
-    .ghost { background:transparent; color:var(--fg); border:1px solid var(--line); }
-    .ghost:disabled { opacity:.4; cursor:not-allowed; }
-    textarea { width:100%; min-height:280px; margin-top:20px; background:var(--bg); color:var(--fg);
-               border:1px solid var(--line); border-radius:10px; padding:14px; font:inherit;
-               line-height:1.5; resize:vertical; }
-    .status { margin-top:14px; font-size:.9rem; min-height:1.2em; }
-    .status.err { color:#ff6b6b; }
-    .status.ok { color:#5fd38a; }
-    .spin { display:inline-block; width:14px; height:14px; border:2px solid var(--mut);
-            border-top-color:var(--acc); border-radius:50%; animation:r .7s linear infinite;
-            vertical-align:-2px; margin-right:6px; }
+    .ghost { background:#fff; color:var(--fg); border:1px solid #d6dedd; }
+    .ghost:disabled { opacity:.45; cursor:not-allowed; }
+
+    .status { margin-top:14px; font-size:.82rem; min-height:1.2em; color:var(--teal);
+              display:flex; align-items:center; gap:7px; }
+    .status.err { color:var(--err); }
+    .status.ok { color:var(--ok); }
+    .spin { width:13px; height:13px; border:2px solid var(--drop-line); border-top-color:var(--teal);
+            border-radius:50%; display:inline-block; animation:r .7s linear infinite; }
     @keyframes r { to { transform:rotate(360deg); } }
+
+    textarea { width:100%; min-height:240px; margin-top:10px; background:#fbfdfd; color:var(--fg);
+               border:1px solid var(--line); border-radius:12px; padding:14px; font:inherit;
+               font-size:.9rem; line-height:1.55; resize:vertical; }
+    textarea:focus { outline:none; border-color:var(--teal); }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;">
-      <h1>Transcritor</h1>
-      <a href="/logout" style="color:#9aa1ad;font-size:.85rem;text-decoration:none;">Sair</a>
+  <div class="card">
+    <div class="bar">
+      <span class="badge">
+        <svg viewBox="0 0 256 256" role="img" aria-label="Corrêa Info">
+          <path d="M162 89.4 A60 60 0 1 0 162 166.6" fill="none" stroke="#0F6E78" stroke-width="24" stroke-linecap="round"/>
+          <circle cx="171" cy="128" r="16" fill="#FF6F59"/>
+        </svg>
+      </span>
+      <span class="wm">Corrêa Info</span>
+      <a class="sair" href="/logout">Sair</a>
     </div>
-    <p class="sub">Envie um ou mais arquivos de áudio e receba a transcrição em português.</p>
 
-    <div class="card">
+    <div class="body">
+      <h1>Transcritor de áudio</h1>
+      <p class="sub">Olá! Envie um ou mais áudios e receba o texto em português.</p>
+
       <label class="drop" id="drop">
         <input type="file" id="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac,.aac,.aiff" multiple>
-        <div><strong>Clique ou arraste</strong> um ou mais arquivos de áudio aqui</div>
-        <div class="fname" id="fname">Nenhum arquivo selecionado</div>
+        <div class="ic">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#0F6E78" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>
+          </svg>
+        </div>
+        <div class="big">Arraste um ou vários áudios</div>
+        <div class="small">ou clique para escolher</div>
+        <div class="chips" id="fname"></div>
       </label>
 
       <div class="row">
@@ -74,15 +121,20 @@
       copy.disabled = !has; dl.disabled = !has;
     }
 
-    function descreverSelecao(fs) {
-      if (!fs.length) return "Nenhum arquivo selecionado";
-      if (fs.length === 1) return fs[0].name;
-      return fs.length + " arquivos: " + Array.from(fs).map(f => f.name).join(", ");
+    // Renderiza os arquivos selecionados como chips (textContent evita injeção via nome).
+    function renderChips(fs) {
+      fname.innerHTML = "";
+      for (const f of fs) {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.textContent = f.name;
+        fname.appendChild(chip);
+      }
     }
 
     file.addEventListener("change", () => {
       const fs = file.files;
-      fname.textContent = descreverSelecao(fs);
+      renderChips(fs);
       go.disabled = !fs.length;
       // Novo(s) áudio(s) inserido(s): limpa a transcrição anterior.
       out.value = "";
@@ -125,7 +177,7 @@
       for (let i = 0; i < fs.length; i++) {
         const f = fs[i];
         const total = fs.length > 1 ? ` (${i + 1}/${fs.length})` : "";
-        setStatus(`<span class="spin"></span>Transcrevendo ${f.name}${total}… (pode levar um tempo em áudios longos)`);
+        setStatus(`<span class="spin"></span> Transcrevendo ${f.name}${total}… (pode levar um tempo em áudios longos)`);
         try {
           const texto = await transcreverUm(f);
           blocos.push(`=== ${f.name} ===\n${texto}`);

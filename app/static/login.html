@@ -4,39 +4,64 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Transcritor — Entrar</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+  <link rel="apple-touch-icon" href="/static/favicon-180.png">
   <style>
-    :root { --bg:#0f1115; --card:#181b22; --fg:#e7e9ee; --mut:#9aa1ad; --acc:#4f8cff; --line:#2a2f3a; }
+    :root {
+      --bg:#eaf0ef; --surface:#ffffff; --fg:#10211F; --mut:#5b6b6b;
+      --teal:#0F6E78; --coral:#FF6F59; --line:#e6ebea; --err:#c0392b;
+    }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-           background:var(--bg); color:var(--fg); min-height:100vh;
-           display:flex; align-items:center; justify-content:center; }
-    .card { background:var(--card); border:1px solid var(--line); border-radius:12px;
-            padding:28px; width:100%; max-width:340px; }
-    h1 { font-size:1.3rem; margin:0 0 4px; }
-    p.sub { color:var(--mut); margin:0 0 22px; font-size:.9rem; }
-    label { display:block; font-size:.85rem; color:var(--mut); margin:14px 0 6px; }
-    input { width:100%; background:var(--bg); color:var(--fg); border:1px solid var(--line);
-            border-radius:8px; padding:10px 12px; font:inherit; }
-    input:focus { outline:none; border-color:var(--acc); }
-    button { width:100%; margin-top:22px; background:var(--acc); color:#fff; border:none;
-             border-radius:8px; padding:11px; font:inherit; cursor:pointer; }
-    .err { color:#ff6b6b; font-size:.88rem; margin-top:14px; min-height:1em; }
+    body { margin:0; min-height:100vh; background:var(--bg); color:var(--fg);
+           font-family:Inter, "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+           display:flex; align-items:center; justify-content:center; padding:24px; }
+    .card { width:100%; max-width:360px; background:var(--surface); border:1px solid var(--line);
+            border-radius:16px; overflow:hidden; box-shadow:0 10px 30px rgba(16,33,31,.08); }
+
+    .bar { background:var(--teal); padding:13px 20px; display:flex; align-items:center; gap:10px; }
+    .bar .badge { width:30px; height:30px; border-radius:8px; background:#fff;
+                  display:flex; align-items:center; justify-content:center; }
+    .bar .badge svg { width:20px; height:20px; }
+    .bar .wm { color:#fff; font-weight:600; font-size:15px; letter-spacing:.2px; }
+
+    form { padding:26px 22px 28px; }
+    h1 { font-size:1.15rem; font-weight:600; margin:0 0 3px; }
+    p.sub { color:var(--mut); margin:0 0 20px; font-size:.84rem; }
+    label { display:block; font-size:.8rem; color:var(--mut); margin:14px 0 6px; }
+    input { width:100%; background:#fbfdfd; color:var(--fg); border:1px solid var(--line);
+            border-radius:10px; padding:11px 12px; font:inherit; font-size:.9rem; }
+    input:focus { outline:none; border-color:var(--teal); }
+    button { width:100%; margin-top:22px; background:var(--coral); color:#fff; border:none;
+             border-radius:10px; padding:12px; font:inherit; font-weight:600; cursor:pointer; }
+    .err { color:var(--err); font-size:.84rem; margin-top:14px; min-height:1em; }
   </style>
 </head>
 <body>
-  <form class="card" method="POST" action="/login">
-    <h1>Transcritor</h1>
-    <p class="sub">Entre para transcrever áudios.</p>
+  <div class="card">
+    <div class="bar">
+      <span class="badge">
+        <svg viewBox="0 0 256 256" role="img" aria-label="Corrêa Info">
+          <path d="M162 89.4 A60 60 0 1 0 162 166.6" fill="none" stroke="#0F6E78" stroke-width="24" stroke-linecap="round"/>
+          <circle cx="171" cy="128" r="16" fill="#FF6F59"/>
+        </svg>
+      </span>
+      <span class="wm">Corrêa Info</span>
+    </div>
 
-    <label for="usuario">Usuário</label>
-    <input type="text" id="usuario" name="usuario" autocomplete="username" autofocus required>
+    <form method="POST" action="/login">
+      <h1>Transcritor de áudio</h1>
+      <p class="sub">Entre para transcrever seus áudios.</p>
 
-    <label for="senha">Senha</label>
-    <input type="password" id="senha" name="senha" autocomplete="current-password" required>
+      <label for="usuario">Usuário</label>
+      <input type="text" id="usuario" name="usuario" autocomplete="username" autofocus required>
 
-    <button type="submit">Entrar</button>
-    <div class="err" id="err"></div>
-  </form>
+      <label for="senha">Senha</label>
+      <input type="password" id="senha" name="senha" autocomplete="current-password" required>
+
+      <button type="submit">Entrar</button>
+      <div class="err" id="err"></div>
+    </form>
+  </div>
 
   <script>
     if (new URLSearchParams(location.search).has("erro")) {
