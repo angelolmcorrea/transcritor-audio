@@ -1,0 +1,29 @@
+# Blueprint do Render (deploy a partir do GitHub).
+# No painel: New > Blueprint > conectar este repo. O Render le este arquivo,
+# cria o servico Docker e PEDE os valores dos segredos marcados `sync: false`
+# (nao ficam no repo publico). Free tier: hiberna apos ~15 min ocioso.
+services:
+  - type: web
+    name: transcritor-audio
+    runtime: docker
+    plan: free
+    region: virginia          # sem regiao no Brasil no free; Virginia e a mais proxima
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    autoDeploy: true           # redeploy automatico a cada push na branch padrao
+    envVars:
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: MAX_UPLOAD_MB
+        value: "100"
+      - key: COOKIE_SECURE
+        value: "true"
+      # Segredos: preenchidos por voce na UI do Render, nunca no repo.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: APP_USER
+        sync: false
+      - key: APP_PASSWORD
+        sync: false

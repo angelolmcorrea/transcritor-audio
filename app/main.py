@@ -136,6 +136,12 @@ def logout(request: Request):
 
 # ------------------------------------------------------------------ aplicacao
 
+@app.get("/healthz")
+def healthz():
+    """Health check sem autenticacao (usado pelo host, ex.: Render)."""
+    return {"ok": True}
+
+
 @app.get("/")
 def index(request: Request):
     if not _autenticado(request):
